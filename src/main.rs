@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::io;
 use std::fs::File;
 use std::io::prelude::*;
@@ -24,12 +25,11 @@ struct RSCert {
     #[br(args(keyType))]
     keySize: SizeInfo,
 
-    #[br(args(keyType, keySize))]
+    #[br(args(keyType))]
     keyData: CertData
 }
 
 #[derive(BinRead, Clone, Copy, PartialEq)]
-#[repr(u16)]
 enum RSKeyType {
     #[br(magic = 1u16)] RSAm(u16),
     #[br(magic = 2u16)] ECDSAm(u16),
@@ -38,40 +38,18 @@ enum RSKeyType {
 #[derive(BinRead, Clone, Copy, PartialEq)]
 #[br(import(ty: RSKeyType))]
 enum SizeInfo {
-    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAn(RSAInfo),
-    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAn(EcdsaInfo)
-}
-
-#[derive(BinRead, Clone, Copy, PartialEq)]
-struct RSAInfo {
-    Nsz: u16,
-    Esz: u16
-}
-
-#[derive(BinRead, Clone, Copy, PartialEq)]
-struct EcdsaInfo {
-    CurveID: u16,
-    KeySz: u16
+    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAn { Nsz: u16, Esz: u16 },
+    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAn{ CurveID: u16, KeySz: u16 }
 }
 
 #[derive(BinRead, PartialEq)]
-#[br(import(ty: RSKeyType, sy: SizeInfo))]
+#[br(import(ty: RSKeyType))]
 enum CertData {
-    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAq(RSAData),
-    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAq(EcdsaData)
-}
-
-#[derive(BinRead, PartialEq)]
-#[br(import(sy: SizeInfo))]
-struct RSAData {
-    #[br(big, count = sy.Nsz)]
-    N: Vec<u8>,
-    E: Vec<u8>
-}
-
-#[derive(BinRead, PartialEq)]
-struct EcdsaData {
-    D: Vec<u8>,
+    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAq {
+        N: Vec<u8>,
+        E: Vec<u8>
+    },
+    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAq { D: Vec<u8> }
 }
 
 #[derive(BinRead)]
@@ -102,6 +80,13 @@ fn main() -> io::Result<()> {
     // Parse magic pattern
     let mut reader = Cursor::new(rs);
     let rs: RSHeader = reader.read_ne().unwrap();
+
+    enum IpAddr {
+        V4(u8, u8, u8, u8),
+        V6(String),
+    }
+
+    let home = IpAddr::V4(127, 0, 0, 1);
 
     println!("Found {} certs!", rs.count);
 
