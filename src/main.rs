@@ -22,8 +22,9 @@ struct RSCert {
     keyType: RSKeyType,
 
     #[br(args(keyType))]
-    keySize: CertInfo,
+    keySize: SizeInfo,
 
+    #[br(args(keyType, keySize))]
     keyData: CertData
 }
 
@@ -34,38 +35,41 @@ enum RSKeyType {
     #[br(magic = 2u16)] ECDSAm(u16),
 }
 
-#[derive(BinRead, Clone)]
+#[derive(BinRead, Clone, Copy, PartialEq)]
 #[br(import(ty: RSKeyType))]
-enum CertInfo {
-    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSA(RSAInfo),
-    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSA(EcdsaInfo)
+enum SizeInfo {
+    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAn(RSAInfo),
+    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAn(EcdsaInfo)
 }
 
-#[derive(BinRead, Clone)]
+#[derive(BinRead, Clone, Copy, PartialEq)]
 struct RSAInfo {
     Nsz: u16,
     Esz: u16
 }
 
-#[derive(BinRead, Clone)]
+#[derive(BinRead, Clone, Copy, PartialEq)]
 struct EcdsaInfo {
     CurveID: u16,
     KeySz: u16
 }
 
-#[derive(BinRead)]
+#[derive(BinRead, PartialEq)]
+#[br(import(ty: RSKeyType, sy: SizeInfo))]
 enum CertData {
-    RSA(RSAData),
-    ECDSA(EcdsaData)
+    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAq(RSAData),
+    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAq(EcdsaData)
 }
 
-#[derive(BinRead)]
+#[derive(BinRead, PartialEq)]
+#[br(import(sy: SizeInfo))]
 struct RSAData {
+    #[br(big, count = sy.Nsz)]
     N: Vec<u8>,
     E: Vec<u8>
 }
 
-#[derive(BinRead)]
+#[derive(BinRead, PartialEq)]
 struct EcdsaData {
     D: Vec<u8>,
 }
