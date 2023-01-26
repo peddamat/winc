@@ -37,8 +37,8 @@ enum RSKeyType {
 #[derive(BinRead, Clone)]
 #[br(import(ty: RSKeyType))]
 enum CertInfo {
-    #[br(pre_assert(ty == 1))] RSA(RSAInfo),
-    #[br(pre_assert(ty == RSKeyType::ECDSAm))] ECDSA(EcdsaInfo)
+    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSA(RSAInfo),
+    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSA(EcdsaInfo)
 }
 
 #[derive(BinRead, Clone)]
@@ -53,21 +53,22 @@ struct EcdsaInfo {
     KeySz: u16
 }
 
-#[derive(BinRead, Debug)]
+#[derive(BinRead)]
 enum CertData {
     RSA(RSAData),
     ECDSA(EcdsaData)
 }
 
+#[derive(BinRead)]
 struct RSAData {
     N: Vec<u8>,
     E: Vec<u8>
 }
 
+#[derive(BinRead)]
 struct EcdsaData {
     D: Vec<u8>,
 }
-
 
 #[derive(BinRead)]
 struct RSTime {
