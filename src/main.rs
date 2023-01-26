@@ -18,48 +18,53 @@ struct RSCert {
     nameHash: u8,
     start: RSTime,
     end: RSTime,
+
     keyType: RSKeyType,
+
+    #[br(args(keyType))]
     keySize: CertInfo,
+
     keyData: CertData
 }
 
-#[derive(BinRead)]
+#[derive(BinRead, Clone, Copy, PartialEq)]
+#[repr(u16)]
 enum RSKeyType {
-    #[br(magic = 1u16)] RSA,
-    #[br(magic = 2u16)] ECDSA,
+    #[br(magic = 1u16)] RSAm(u16),
+    #[br(magic = 2u16)] ECDSAm(u16),
 }
 
-union CertInfo {
-    RSAkey: RSAInfo,
-    ECDSAkey: EcdsaInfo
+#[derive(BinRead, Clone)]
+#[br(import(ty: RSKeyType))]
+enum CertInfo {
+    #[br(pre_assert(ty == 1))] RSA(RSAInfo),
+    #[br(pre_assert(ty == RSKeyType::ECDSAm))] ECDSA(EcdsaInfo)
 }
 
+#[derive(BinRead, Clone)]
 struct RSAInfo {
     Nsz: u16,
     Esz: u16
 }
 
+#[derive(BinRead, Clone)]
 struct EcdsaInfo {
     CurveID: u16,
     KeySz: u16
 }
 
-union CertData {
-    RSAdata: RSAData,
-    ECDSAdata: EcdsaData
+#[derive(BinRead, Debug)]
+enum CertData {
+    RSA(RSAData),
+    ECDSA(EcdsaData)
 }
 
-#[derive(BinRead)]
 struct RSAData {
-    #[br(big, count = count)]
     N: Vec<u8>,
-    #[br(big, count = count)]
     E: Vec<u8>
 }
 
-#[derive(BinRead)]
 struct EcdsaData {
-    #[br(big, count = count)]
     D: Vec<u8>,
 }
 
