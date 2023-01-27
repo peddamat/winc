@@ -10,13 +10,13 @@ use binread::{BinReaderExt, BinRead, io::Cursor};
 struct RSHeader {
     count: u32,
 
-    #[br(count = 1)]
+    #[br(count = 12)]
     certs: Vec<RSCert>
 }
 
 #[derive(BinRead)]
 struct RSCert {
-    nameHash: u8,
+    nameHash: [u8; 20],
     start: RSTime,
     end: RSTime,
 
@@ -30,9 +30,9 @@ struct RSCertData {
         Nsz: u16,
         Esz: u16,
 
-        #[br(count = Nsz)]
+        #[br(count = Nsz, align_after=4)]
         N: Vec<u8>,
-        #[br(count = Esz)]
+        #[br(count = Esz, align_after=4)]
         E: Vec<u8>
     // },
     // #[br(little, magic = 2u32)] ECDSA {
