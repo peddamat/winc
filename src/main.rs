@@ -10,7 +10,7 @@ use binread::{BinReaderExt, BinRead, io::Cursor};
 struct RSHeader {
     count: u32,
 
-    #[br(count = count)]
+    #[br(count = 1)]
     certs: Vec<RSCert>
 }
 
@@ -24,8 +24,9 @@ struct RSCert {
 }
 
 #[derive(BinRead, Clone, PartialEq)]
-enum RSCertData {
-    #[br(little, magic = 1u32)] RSA {
+struct RSCertData {
+    // #[br(little, magic = 1u32)] RSA {
+        T: u32,
         Nsz: u16,
         Esz: u16,
 
@@ -33,14 +34,14 @@ enum RSCertData {
         N: Vec<u8>,
         #[br(count = Esz)]
         E: Vec<u8>
-    },
-    #[br(little, magic = 2u32)] ECDSA {
-        CurveID: u16,
-        KeySz: u16,
+    // },
+    // #[br(little, magic = 2u32)] ECDSA {
+    //     CurveID: u16,
+    //     KeySz: u16,
 
-        #[br(count = KeySz)]
-        D: Vec<u8>,
-    },
+    //     #[br(count = KeySz)]
+    //     D: Vec<u8>,
+    // },
 }
 
 #[derive(BinRead)]
@@ -61,14 +62,14 @@ fn main() -> io::Result<()> {
     println!("Opening file {file_path}");
     let mut f= File::open(file_path)?;
 
-    // Seek to Root Cert store offset
+    // Seek to Root Cert Store offset
     f.seek(SeekFrom::Start(0x4000))
         .expect("error reading file!");
 
-    let mut rs = [0; 1024];
+    let mut rs = [0; 4096];
     f.read(&mut rs);
 
-    // Parse magic pattern
+    // Parse Root Cert Store
     let mut reader = Cursor::new(rs);
     let rs: RSHeader = reader.read_le().unwrap();
 
