@@ -10,7 +10,7 @@ use binread::{BinReaderExt, BinRead, io::Cursor};
 struct RSHeader {
     count: u32,
 
-    #[br(big, count = count)]
+    #[br(count = count)]
     certs: Vec<RSCert>
 }
 
@@ -20,36 +20,27 @@ struct RSCert {
     start: RSTime,
     end: RSTime,
 
-    keyType: RSKeyType,
-
-    #[br(args(keyType))]
-    keySize: SizeInfo,
-
-    #[br(args(keyType))]
-    keyData: CertData
+    data: RSCertData,
 }
 
-#[derive(BinRead, Clone, Copy, PartialEq)]
-enum RSKeyType {
-    #[br(magic = 1u16)] RSAm(u16),
-    #[br(magic = 2u16)] ECDSAm(u16),
-}
+#[derive(BinRead, Clone, PartialEq)]
+enum RSCertData {
+    #[br(little, magic = 1u32)] RSA {
+        Nsz: u16,
+        Esz: u16,
 
-#[derive(BinRead, Clone, Copy, PartialEq)]
-#[br(import(ty: RSKeyType))]
-enum SizeInfo {
-    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAn { Nsz: u16, Esz: u16 },
-    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAn{ CurveID: u16, KeySz: u16 }
-}
-
-#[derive(BinRead, PartialEq)]
-#[br(import(ty: RSKeyType))]
-enum CertData {
-    #[br(pre_assert(ty == RSKeyType::RSAm(1)))] RSAq {
+        #[br(count = Nsz)]
         N: Vec<u8>,
+        #[br(count = Esz)]
         E: Vec<u8>
     },
-    #[br(pre_assert(ty == RSKeyType::ECDSAm(2)))] ECDSAq { D: Vec<u8> }
+    #[br(little, magic = 2u32)] ECDSA {
+        CurveID: u16,
+        KeySz: u16,
+
+        #[br(count = KeySz)]
+        D: Vec<u8>,
+    },
 }
 
 #[derive(BinRead)]
@@ -74,19 +65,12 @@ fn main() -> io::Result<()> {
     f.seek(SeekFrom::Start(0x4000))
         .expect("error reading file!");
 
-    let mut rs = [0; 100];
+    let mut rs = [0; 1024];
     f.read(&mut rs);
 
     // Parse magic pattern
     let mut reader = Cursor::new(rs);
-    let rs: RSHeader = reader.read_ne().unwrap();
-
-    enum IpAddr {
-        V4(u8, u8, u8, u8),
-        V6(String),
-    }
-
-    let home = IpAddr::V4(127, 0, 0, 1);
+    let rs: RSHeader = reader.read_le().unwrap();
 
     println!("Found {} certs!", rs.count);
 
