@@ -1,22 +1,23 @@
 use binrw::NullString;
-use binrw::{io::Cursor, BinRead, BinReaderExt, FilePtr8, FilePtr32, io::Read};
-use std::borrow::Borrow;
+use binrw::{io::Cursor, BinRead, BinReaderExt, io::Read};
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom;
 
-#[derive(BinRead)]
+#[binrw::binread]
 #[br(magic = b"\xab\xfe\x18\x5b\x70\xc3\x46\x92")]
 struct TlsStore {
     #[br(offset=0x5008)]
     count: u32,
 
+    #[br(temp)]
     next_write_addr: u32,
 
     #[br(count = count)]
     certs: Vec<TSCertEntry>,
 
+    #[br(temp)]
     crc: u32,
 }
 
@@ -32,17 +33,26 @@ struct TSCertEntry {
     data: Vec<u8>,
 }
 
-#[derive(BinRead, Clone, PartialEq)]
+#[binrw::binread]
 #[allow(dead_code)]
 struct RSAPrivKey {
+    #[br(temp)]
     n_sz: u16,
+    #[br(temp)]
     e_sz: u16,
+    #[br(temp)]
     d_sz: u16,
+    #[br(temp)]
     p_sz: u16,
+    #[br(temp)]
     q_sz: u16,
+    #[br(temp)]
     dp_sz: u16,
+    #[br(temp)]
     dq_sz: u16,
+    #[br(temp)]
     qinv_sz: u16,
+
     version: u32,
 
     #[br(count = n_sz)]
@@ -82,12 +92,14 @@ struct RSCert {
     data: RSCertData,
 }
 
-#[derive(BinRead, Clone, PartialEq)]
+#[binrw::binread]
 enum RSCertData {
     #[br(little, magic = 1u32)]
     Rsa {
-        // T: u32,
+        #[br(temp)]
         n_sz: u16,
+
+        #[br(temp)]
         e_sz: u16,
 
         #[br(count = n_sz, align_after=4)]
@@ -98,6 +110,8 @@ enum RSCertData {
     #[br(little, magic = 2u32)]
     Ecdsa {
         curve_id: u16,
+
+        #[br(temp)]
         key_sz: u16,
 
         #[br(count = key_sz)]
@@ -141,15 +155,18 @@ fn main() -> io::Result<()> {
 
     for (i, c) in rs.certs.into_iter().enumerate() {
         match c.data {
-            RSCertData::Rsa { n_sz, e_sz, n, e } => println!(
-                "Cert {}: Name: {:?} / Nsz: {} / Esz: {}!",
-                i, c.name_hash, n_sz, e_sz
-            ),
-            RSCertData::Ecdsa {
-                curve_id,
-                key_sz,
-                d,
-            } => println!("Cert {}: Name: {:?} / KeySz: {}!", i, c.name_hash, key_sz),
+            RSCertData::Rsa { n, e } => {
+
+                let n = openssl::bn::BigNum::from_slice(&n).unwrap();
+                let e = openssl::bn::BigNum::from_slice(&e).unwrap();
+                let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
+                let pkk = pk.public_key_to_pem_pkcs1().unwrap();
+                println!( "Certificate (RSA) {}: {}", i, String::from_utf8(pkk).unwrap());
+
+            },
+            RSCertData::Ecdsa { curve_id, d, } => {
+                println!("Certificate (ECDSA) {}: Name: {:?}!", i, c.name_hash);
+            }
         }
     }
 
