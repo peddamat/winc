@@ -1,5 +1,5 @@
 use binrw::NullString;
-use binrw::{io::Cursor, BinRead, BinReaderExt, io::Read};
+use binrw::{io::Cursor, BinRead, BinReaderExt, io::Read, BinResult, ReadOptions};
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
@@ -72,6 +72,7 @@ struct RSAPrivKey {
     #[br(count = qinv_sz)]
     qinv: Vec<u8>,
 }
+
 
 #[derive(BinRead)]
 #[br(magic = b"\x11\xF1\x12\xF2\x13\xF3\x14\xF4\x15\xF5\x16\xF6\x17\xF7\x18\xF8")]
@@ -146,65 +147,63 @@ fn main() -> io::Result<()> {
         reader
     };
 
-    reader.seek(SeekFrom::Start(0x4000)).expect("Error finding Root Cert Store!");
+    // Locate and parse TLS Store
+    reader.seek(SeekFrom::Start(0x5000)).expect("Error finding TLS Cert Store!");
+    {
+        let ts: TlsStore = reader.read_le().unwrap();
 
-    // Parse Root Cert Store
-    let rs: RootCertStore = reader.read_le().unwrap();
+        println!("Found {} TLS Store certs!", ts.count);
 
-    println!("Found {} Root Store certs!", rs.count);
+        for (i, cert) in ts.certs.into_iter().enumerate() {
+            if cert.file_name.to_string().starts_with("CERT")
+            {
+                let x509 = openssl::x509::X509::from_der(&cert.data).expect("error opening x509");
+                let x509_text = x509.to_text().unwrap();
+                println!("TLS Certificate {}: {}\n {}", i, cert.file_name, String::from_utf8(x509_text).unwrap());
+            }
+            else if cert.file_name.to_string().starts_with("PRIV")
+            {
+                let mut c = Cursor::new(&cert.data);
+                let pk: RSAPrivKey = c.read_le().unwrap();
+                let n = openssl::bn::BigNum::from_slice(&pk.n).unwrap();
+                let e = openssl::bn::BigNum::from_slice(&pk.e).unwrap();
+                let d = openssl::bn::BigNum::from_slice(&pk.d).unwrap();
+                let p = openssl::bn::BigNum::from_slice(&pk.p).unwrap();
+                let q = openssl::bn::BigNum::from_slice(&pk.q).unwrap();
+                let dp = openssl::bn::BigNum::from_slice(&pk.dp).unwrap();
+                let dq = openssl::bn::BigNum::from_slice(&pk.dq).unwrap();
+                let qinv = openssl::bn::BigNum::from_slice(&pk.qinv).unwrap();
 
-    for (i, c) in rs.certs.into_iter().enumerate() {
-        match c.data {
-            RSCertData::Rsa { n, e } => {
-
-                let n = openssl::bn::BigNum::from_slice(&n).unwrap();
-                let e = openssl::bn::BigNum::from_slice(&e).unwrap();
-                let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
-                let pkk = pk.public_key_to_pem_pkcs1().unwrap();
-                println!( "Certificate (RSA) {}: {}", i, String::from_utf8(pkk).unwrap());
-
-            },
-            RSCertData::Ecdsa { curve_id, d, } => {
-                println!("Certificate (ECDSA) {}: Name: {:?}!", i, c.name_hash);
+                let pkk = openssl::rsa::Rsa::from_private_components(n, e, d, p, q, dp, dq, qinv).unwrap();
+                let pkk = pkk.private_key_to_pem().unwrap();
+                println!("TLS Private Key {}: {}\n {}", i, cert.file_name, String::from_utf8(pkk).unwrap());
             }
         }
     }
 
+    // Locate and parse Root Cert Store
+    reader.seek(SeekFrom::Start(0x4000)).expect("Error finding Root Cert Store!");
+    {
+        let rs: RootCertStore = reader.read_le().unwrap();
 
-    // Locate TLS Store in memory
-    reader.seek(SeekFrom::Start(0x5000)).expect("Error finding TLS Cert Store!");
+        println!("Found {} Root Store certs!", rs.count);
 
-    // Parse TLS Cert Store
-    let ts: TlsStore = reader.read_le().unwrap();
-
-    println!("Found {} TLS Store certs!", ts.count);
-
-    for (i, c) in ts.certs.into_iter().enumerate() {
-        println!("{:?}: offset: {} / size: {}", c.file_name, c.file_addr-0x5000, c.file_size);
-        if c.file_name[0] == 67
-        {
-            let x509 = openssl::x509::X509::from_der(&c.data).expect("error opening x509");
-            let x509_text = x509.to_text().unwrap();
-            println!("Certificate {}: {}", i, String::from_utf8(x509_text).unwrap());
-        }
-        else if c.file_name[0] == 80
-        {
-            let mut c = Cursor::new(&c.data);
-            let pk: RSAPrivKey = c.read_le().unwrap();
-            let n = openssl::bn::BigNum::from_slice(&pk.n).unwrap();
-            let e = openssl::bn::BigNum::from_slice(&pk.e).unwrap();
-            let d = openssl::bn::BigNum::from_slice(&pk.d).unwrap();
-            let p = openssl::bn::BigNum::from_slice(&pk.p).unwrap();
-            let q = openssl::bn::BigNum::from_slice(&pk.q).unwrap();
-            let dp = openssl::bn::BigNum::from_slice(&pk.dp).unwrap();
-            let dq = openssl::bn::BigNum::from_slice(&pk.dq).unwrap();
-            let qinv = openssl::bn::BigNum::from_slice(&pk.qinv).unwrap();
-
-            let pkk = openssl::rsa::Rsa::from_private_components(n, e, d, p, q, dp, dq, qinv).unwrap();
-            let pkk = pkk.private_key_to_pem().unwrap();
-            println!("Private Key {}: {}", i, String::from_utf8(pkk).unwrap());
+        for (i, cert) in rs.certs.into_iter().enumerate() {
+            match cert.data {
+                RSCertData::Rsa { n, e } => {
+                    let n = openssl::bn::BigNum::from_slice(&n).unwrap();
+                    let e = openssl::bn::BigNum::from_slice(&e).unwrap();
+                    let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
+                    let pkk = pk.public_key_to_pem_pkcs1().unwrap();
+                    println!( "Root Certificate (RSA) {}: {}", i, String::from_utf8(pkk).unwrap());
+                },
+                RSCertData::Ecdsa { curve_id: _, d: _, } => {
+                    println!("Root Certificate (ECDSA) {}: Name: {:?}!", i, cert.name_hash);
+                }
+            }
         }
     }
+
 
     Ok(())
 }
