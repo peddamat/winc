@@ -8,7 +8,7 @@ use std::io::SeekFrom;
 
 #[derive(BinRead)]
 #[br(magic = b"\xab\xfe\x18\x5b\x70\xc3\x46\x92")]
-struct TSHeader {
+struct TlsStore {
     #[br(offset=0x5008)]
     count: u32,
 
@@ -29,10 +29,10 @@ struct TSCertEntry {
     file_addr: u32,
 
     #[br(restore_position, seek_before(SeekFrom::Start(file_addr as u64)), count = file_size)]
-    data: Vec<u8>
+    data: Vec<u8>,
 }
 
-#[derive(BinRead)]
+#[derive(BinRead, Clone, PartialEq)]
 #[allow(dead_code)]
 struct RSAPrivKey {
     n_sz: u16,
@@ -65,7 +65,7 @@ struct RSAPrivKey {
 
 #[derive(BinRead)]
 #[br(magic = b"\x11\xF1\x12\xF2\x13\xF3\x14\xF4\x15\xF5\x16\xF6\x17\xF7\x18\xF8")]
-struct RSHeader {
+struct RootCertStore {
     count: u32,
 
     #[br(count = count)]
@@ -135,7 +135,7 @@ fn main() -> io::Result<()> {
     reader.seek(SeekFrom::Start(0x4000)).expect("Error finding Root Cert Store!");
 
     // Parse Root Cert Store
-    let rs: RSHeader = reader.read_le().unwrap();
+    let rs: RootCertStore = reader.read_le().unwrap();
 
     println!("Found {} Root Store certs!", rs.count);
 
@@ -158,7 +158,7 @@ fn main() -> io::Result<()> {
     reader.seek(SeekFrom::Start(0x5000)).expect("Error finding TLS Cert Store!");
 
     // Parse TLS Cert Store
-    let ts: TSHeader = reader.read_le().unwrap();
+    let ts: TlsStore = reader.read_le().unwrap();
 
     println!("Found {} TLS Store certs!", ts.count);
 
@@ -184,7 +184,8 @@ fn main() -> io::Result<()> {
             let qinv = openssl::bn::BigNum::from_slice(&pk.qinv).unwrap();
 
             let pkk = openssl::rsa::Rsa::from_private_components(n, e, d, p, q, dp, dq, qinv).unwrap();
-            println!("Private Key {}: {:#04X?}", i, pkk.n());
+            let pkk = pkk.private_key_to_pem().unwrap();
+            println!("Private Key {}: {}", i, String::from_utf8(pkk).unwrap());
         }
     }
 
