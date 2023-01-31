@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 binread = "2.2.0"
-
+openssl = "0.10.45"
+rsa = "0.8.1"
