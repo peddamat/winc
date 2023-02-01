@@ -41,9 +41,7 @@ pub struct RcsTime {
 pub enum RcsCert {
     #[br(little, magic = 1u32)]
     RsaPublicKey {
-        #[br(temp)]
         n_sz: u16,
-        #[br(temp)]
         e_sz: u16,
 
         #[br(align_after = 4, count = n_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
@@ -55,7 +53,6 @@ pub enum RcsCert {
     EcdsaPublicKey {
         curve_id: u16,
 
-        #[br(temp)]
         key_sz: u16,
 
         #[br(count = key_sz)]
@@ -72,13 +69,11 @@ pub struct TlsStore {
     #[br(offset = 0x5008)]
     pub count: u32,
 
-    #[br(temp)]
     next_write_addr: u32,
 
     #[br(count = count)]
     pub certs: Vec<TSCertEntry>,
 
-    #[br(temp)]
     crc: u32,
 }
 
@@ -87,9 +82,7 @@ pub struct TSCertEntry {
     #[br(pad_size_to(48))]
     pub file_name: NullString,
 
-    #[br(temp)]
     file_size: u32,
-    #[br(temp)]
     file_addr: u32,
 
     #[br(restore_position, seek_before(SeekFrom::Start(file_addr as u64)), count = file_size)]
@@ -99,21 +92,13 @@ pub struct TSCertEntry {
 #[binrw::binread]
 #[allow(dead_code)]
 pub struct RSAPrivKey {
-    #[br(temp)]
     n_sz: u16,
-    #[br(temp)]
     e_sz: u16,
-    #[br(temp)]
     d_sz: u16,
-    #[br(temp)]
     p_sz: u16,
-    #[br(temp)]
     q_sz: u16,
-    #[br(temp)]
     dp_sz: u16,
-    #[br(temp)]
     dq_sz: u16,
-    #[br(temp)]
     qinv_sz: u16,
 
     version: u32,
