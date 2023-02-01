@@ -47,13 +47,24 @@ fn main() -> Result<(), String> {
     for (i, cert) in rcs.certs.into_iter().enumerate() {
         match cert.data {
             RcsCert::RsaPrivKey { n, e } => {
-                let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
-                let pkk = pk.public_key_to_pem_pkcs1().unwrap();
-                println!(
-                    "Root Certificate (RSA) {}:\n {}",
-                    i,
-                    String::from_utf8(pkk).unwrap()
-                );
+                Rsa::from_public_components(n, e)
+                    .map_err(|err| err.to_string() )
+                    .and_then(|pk| {
+                        pk.public_key_to_pem_pkcs1()
+                            .map_err(|err| err.to_string() )
+                            .and_then(|pk_as_pem| {
+                                String::from_utf8(pk_as_pem)
+                                    .map_err(|err| err.to_string() )
+                                    .map(|fuck| {
+                                        println!(
+                                            "Root Certificate (RSA) {}:\n {}",
+                                            i,
+                                            fuck
+                                        );
+                                    })
+                            })
+                    })
+                    .unwrap()
             }
             RcsCert::Ecdsa { curve_id: _, d: _ } => {
                 println!(
@@ -66,7 +77,7 @@ fn main() -> Result<(), String> {
 
     // Locate and parse TLS Store
     reader
-        .seek(SeekFrom::Start(0x5000))
+        .seek(SeekFrom::Start(0x3000))
         .expect("Error finding TLS Cert Store!");
     {
         let ts: TlsStore = reader.read_le().unwrap();
@@ -83,14 +94,14 @@ fn main() -> Result<(), String> {
 
             if cert.file_name.to_string().starts_with("CERT") {
                 let x509 = X509::from_der(&cert.data)
-                    .expect("error opening x509")
-                    .to_text()?;
-                // let x509_text = x509.to_text().unwrap();
+                    .expect("error opening x509");
+
+                let x509_text = x509.to_text().unwrap();
                 println!(
                     "TLS Certificate {}: {}\n {}",
                     i,
                     cert.file_name,
-                    String::from_utf8(x509).unwrap()
+                    String::from_utf8(x509_text).unwrap()
                 );
             } else if cert.file_name.to_string().starts_with("PRIV") {
                 let priv_key_as_pem = {
