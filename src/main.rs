@@ -1,9 +1,11 @@
 use binrw::NullString;
-use binrw::{io::Cursor, BinRead, BinReaderExt, io::Read, BinResult, ReadOptions};
+use binrw::{io::Cursor, BinRead, BinReaderExt, io::Read };
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom;
+use openssl::rsa::Rsa;
+use openssl::bn::BigNum;
 
 #[binrw::binread]
 #[br(magic = b"\xab\xfe\x18\x5b\x70\xc3\x46\x92")]
@@ -11,23 +13,21 @@ struct TlsStore {
     #[br(offset=0x5008)]
     count: u32,
 
-    #[br(temp)]
-    next_write_addr: u32,
+    #[br(temp)] next_write_addr: u32,
 
     #[br(count = count)]
     certs: Vec<TSCertEntry>,
 
-    #[br(temp)]
-    crc: u32,
+    #[br(temp)] crc: u32,
 }
 
-#[derive(BinRead, Debug)]
+#[binrw::binread]
 struct TSCertEntry {
     #[br(pad_size_to(48))]
     file_name: NullString,
-    file_size: u32,
-    // file_addr: FilePtr32<u8>
-    file_addr: u32,
+
+    #[br(temp)] file_size: u32,
+    #[br(temp)] file_addr: u32,
 
     #[br(restore_position, seek_before(SeekFrom::Start(file_addr as u64)), count = file_size)]
     data: Vec<u8>,
@@ -36,43 +36,35 @@ struct TSCertEntry {
 #[binrw::binread]
 #[allow(dead_code)]
 struct RSAPrivKey {
-    #[br(temp)]
-    n_sz: u16,
-    #[br(temp)]
-    e_sz: u16,
-    #[br(temp)]
-    d_sz: u16,
-    #[br(temp)]
-    p_sz: u16,
-    #[br(temp)]
-    q_sz: u16,
-    #[br(temp)]
-    dp_sz: u16,
-    #[br(temp)]
-    dq_sz: u16,
-    #[br(temp)]
-    qinv_sz: u16,
+    #[br(temp)] n_sz: u16,
+    #[br(temp)] e_sz: u16,
+    #[br(temp)] d_sz: u16,
+    #[br(temp)] p_sz: u16,
+    #[br(temp)] q_sz: u16,
+    #[br(temp)] dp_sz: u16,
+    #[br(temp)] dq_sz: u16,
+    #[br(temp)] qinv_sz: u16,
 
     version: u32,
 
-    #[br(count = n_sz)]
-    n: Vec<u8>,
-    #[br(count = e_sz)]
-    e: Vec<u8>,
-    #[br(count = d_sz)]
-    d: Vec<u8>,
-    #[br(count = p_sz)]
-    p: Vec<u8>,
-    #[br(count = q_sz)]
-    q: Vec<u8>,
-    #[br(count = dp_sz)]
-    dp: Vec<u8>,
-    #[br(count = dq_sz)]
-    dq: Vec<u8>,
-    #[br(count = qinv_sz)]
-    qinv: Vec<u8>,
-}
+    #[br(count = n_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    n: BigNum,
+    #[br(count = e_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    e: BigNum,
+    #[br(count = d_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    d: BigNum,
+    #[br(count = p_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    p: BigNum,
+    #[br(count = q_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    q: BigNum,
+    #[br(count = dp_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    dp: BigNum,
+    #[br(count = dq_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+    dq: BigNum,
+    #[br(count = qinv_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
 
+    qinv: BigNum,
+}
 
 #[derive(BinRead)]
 #[br(magic = b"\x11\xF1\x12\xF2\x13\xF3\x14\xF4\x15\xF5\x16\xF6\x17\xF7\x18\xF8")]
@@ -89,31 +81,27 @@ struct RSCert {
     name_hash: [u8; 20],
     start: RSTime,
     end: RSTime,
-
     data: RSCertData,
 }
 
 #[binrw::binread]
+#[allow(dead_code)]
 enum RSCertData {
     #[br(little, magic = 1u32)]
     Rsa {
-        #[br(temp)]
-        n_sz: u16,
+        #[br(temp)] n_sz: u16,
+        #[br(temp)] e_sz: u16,
 
-        #[br(temp)]
-        e_sz: u16,
-
-        #[br(count = n_sz, align_after=4)]
-        n: Vec<u8>,
-        #[br(count = e_sz, align_after=4)]
-        e: Vec<u8>,
+        #[br(align_after = 4, count = n_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+        n: BigNum,
+        #[br(align_after = 4, count = e_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
+        e: BigNum,
     },
     #[br(little, magic = 2u32)]
     Ecdsa {
         curve_id: u16,
 
-        #[br(temp)]
-        key_sz: u16,
+        #[br(temp)] key_sz: u16,
 
         #[br(count = key_sz)]
         d: Vec<u8>,
@@ -152,7 +140,7 @@ fn main() -> io::Result<()> {
     {
         let ts: TlsStore = reader.read_le().unwrap();
 
-        println!("Found {} TLS Store certs!", ts.count);
+        println!("Found {} items in TLS Store!", ts.count);
 
         for (i, cert) in ts.certs.into_iter().enumerate() {
             if cert.file_name.to_string().starts_with("CERT")
@@ -163,23 +151,19 @@ fn main() -> io::Result<()> {
             }
             else if cert.file_name.to_string().starts_with("PRIV")
             {
-                let mut c = Cursor::new(&cert.data);
-                let pk: RSAPrivKey = c.read_le().unwrap();
-                let n = openssl::bn::BigNum::from_slice(&pk.n).unwrap();
-                let e = openssl::bn::BigNum::from_slice(&pk.e).unwrap();
-                let d = openssl::bn::BigNum::from_slice(&pk.d).unwrap();
-                let p = openssl::bn::BigNum::from_slice(&pk.p).unwrap();
-                let q = openssl::bn::BigNum::from_slice(&pk.q).unwrap();
-                let dp = openssl::bn::BigNum::from_slice(&pk.dp).unwrap();
-                let dq = openssl::bn::BigNum::from_slice(&pk.dq).unwrap();
-                let qinv = openssl::bn::BigNum::from_slice(&pk.qinv).unwrap();
+                let priv_key_as_pem = {
+                    let pk_raw: RSAPrivKey = Cursor::new(&cert.data).read_le().unwrap();
 
-                let pkk = openssl::rsa::Rsa::from_private_components(n, e, d, p, q, dp, dq, qinv).unwrap();
-                let pkk = pkk.private_key_to_pem().unwrap();
-                println!("TLS Private Key {}: {}\n {}", i, cert.file_name, String::from_utf8(pkk).unwrap());
+                    Rsa::from_private_components(pk_raw.n, pk_raw.e, pk_raw.d, pk_raw.p, pk_raw.q, pk_raw.dp, pk_raw.dq, pk_raw.qinv)
+                    .unwrap()
+                    .private_key_to_pem()
+                    .unwrap()
+                };
+                println!("TLS Private Key {}: {}\n {}", i, cert.file_name, String::from_utf8(priv_key_as_pem).unwrap());
             }
         }
     }
+
 
     // Locate and parse Root Cert Store
     reader.seek(SeekFrom::Start(0x4000)).expect("Error finding Root Cert Store!");
@@ -191,14 +175,12 @@ fn main() -> io::Result<()> {
         for (i, cert) in rs.certs.into_iter().enumerate() {
             match cert.data {
                 RSCertData::Rsa { n, e } => {
-                    let n = openssl::bn::BigNum::from_slice(&n).unwrap();
-                    let e = openssl::bn::BigNum::from_slice(&e).unwrap();
                     let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
                     let pkk = pk.public_key_to_pem_pkcs1().unwrap();
-                    println!( "Root Certificate (RSA) {}: {}", i, String::from_utf8(pkk).unwrap());
+                    println!( "Root Certificate (RSA) {}:\n {}", i, String::from_utf8(pkk).unwrap());
                 },
                 RSCertData::Ecdsa { curve_id: _, d: _, } => {
-                    println!("Root Certificate (ECDSA) {}: Name: {:?}!", i, cert.name_hash);
+                    println!("Root Certificate (ECDSA) {}:\n Name: {:?}!", i, cert.name_hash);
                 }
             }
         }
