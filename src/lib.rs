@@ -1,4 +1,4 @@
-use binrw::{ BinRead, NullString };
+use binrw::{ BinRead, NullString, FilePtr32 };
 use openssl::bn::BigNum;
 use std::io::SeekFrom;
 
@@ -85,9 +85,12 @@ pub struct TSCertEntry {
     file_size: u32,
     file_addr: u32,
 
+    // file_addr: FilePtr32<u8>,
+
     #[br(restore_position, seek_before(SeekFrom::Start(file_addr as u64)), count = file_size)]
     pub data: Vec<u8>,
 }
+
 
 #[binrw::binread]
 #[allow(dead_code)]

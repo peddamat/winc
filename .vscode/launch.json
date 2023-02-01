@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'rust_hello'",
+            "name": "Debug executable 'winc'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=rust_hello",
-                    "--package=rust_hello"
+                    "--bin=winc",
+                    "--package=winc"
                 ],
                 "filter": {
-                    "name": "rust_hello",
+                    "name": "winc",
                     "kind": "bin"
                 },
                 "env": {
@@ -28,16 +28,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'rust_hello'",
+            "name": "Debug unit tests in executable 'winc'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=rust_hello",
-                    "--package=rust_hello"
+                    "--bin=winc",
+                    "--package=winc"
                 ],
                 "filter": {
-                    "name": "rust_hello",
+                    "name": "winc",
                     "kind": "bin"
                 },
                 "env": {

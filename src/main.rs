@@ -44,8 +44,8 @@ fn read_root_cert_store(reader: &mut Cursor<[u8; 524288]>) {
 
     for (i, cert) in store.certs.into_iter().enumerate() {
         match cert.data {
-            RcsCert::RsaPublicKey { n, e } => process_rsa_public_key(n, e, i),
-            RcsCert::EcdsaPublicKey { curve_id: _, d: _ } => process_ecdsa_public_key(i, cert),
+            RcsCert::RsaPublicKey { n_sz, e_sz, n, e } => process_rsa_public_key(n, e, i),
+            RcsCert::EcdsaPublicKey { key_sz, curve_id: _, d: _ } => process_ecdsa_public_key(i, cert),
         }
     }
 
@@ -78,13 +78,13 @@ fn read_tls_store(reader: &mut Cursor<[u8; 524288]>) {
 
     for (i, cert) in store.certs.into_iter().enumerate() {
         match &cert.file_name.to_string()[..4] {
-            "CERT" => process_x509_cert(&cert, i),
-            "PRIV" => process_private_key(&cert, i),
+            "CERT" => process_x509_cert(cert, i),
+            "PRIV" => process_private_key(cert, i),
             _ => println!("Unknown file found in TLS Cert Store: {}!", cert.file_name),
         };
     }
 
-    fn process_x509_cert(cert: &TSCertEntry, i: usize) {
+    fn process_x509_cert(cert: TSCertEntry, i: usize) {
         let x509_string = {
             let x509 = X509::from_der(&cert.data).expect("Error parsing X509 certificate!");
             let x509_text = x509.to_text().expect("Error converting X509 certificate to string!");
@@ -92,9 +92,11 @@ fn read_tls_store(reader: &mut Cursor<[u8; 524288]>) {
         };
 
         println!("TLS Certificate {}: {}\n {}", i, cert.file_name, x509_string);
+
+        drop(cert);
     }
 
-    fn process_private_key(cert: &TSCertEntry, i: usize) {
+    fn process_private_key(cert: TSCertEntry, i: usize) {
         let priv_key_as_pem = {
             let pk: RSAPrivKey = Cursor::new(&cert.data).read_le().expect("Error parsing RSA private key!");
 
@@ -107,5 +109,7 @@ fn read_tls_store(reader: &mut Cursor<[u8; 524288]>) {
         };
 
         println!("TLS Private Key {}: {}\n {}", i, cert.file_name, priv_key_as_pem);
+
+        drop(cert);
     }
 }
