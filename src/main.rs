@@ -9,47 +9,57 @@ use std::io::SeekFrom;
 use winc::*;
 
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), String> {
     let file_path = "firmware/atwinc1500-original.bin";
 
     let mut reader = {
         println!("Opening file {file_path}");
 
-        let mut f = File::open(file_path).expect("Error opening file!");
-
-        let mut buf = [0; 512 * 1024];
-        f.read_exact(&mut buf).expect("Error reading file!");
-
-        let reader = Cursor::new(buf);
-        reader
+        File::open(file_path)
+            .map_err(|err| err.to_string() )
+            .and_then(|mut file| {
+                let mut buf = [0; 512 * 1024];
+                file.read_exact(&mut buf)
+                    .map_err(|err| err.to_string())
+                    .map(|_| buf)
+            })
+            .map(|buf| { Cursor::new(buf) })
+            .unwrap()
     };
 
-    // Locate and parse Root Cert Store
-    reader
-        .seek(SeekFrom::Start(0x4000))
-        .expect("Error finding Root Cert Store!");
-    {
-        let rs: RootCertStore = reader.read_le().unwrap();
+    // The Root Cert Store starts at 0x4000 in the binary,
+    //   as documented in the ATWINC1500 documentation
+    match reader.seek(SeekFrom::Start(0x4000)) {
+        Ok(_) => println!("Seeking to Root Cert Store offset 0x4000"),
+        Err(err) => return Err(err.to_string())
+    }
 
-        println!("Found {} Root Store certs!", rs.count);
+    // The ATWINC1500 is little-endian, though the Cortus can be
+    //   configured as either big-endian or little-endian
+    let rcs = match reader.read_le::<RootCertStore>() {
+        Ok(r) => {
+            println!("Found {} Root Store certs!", r.count);
+            r
+        },
+        Err(err) => return Err(err.to_string())
+    };
 
-        for (i, cert) in rs.certs.into_iter().enumerate() {
-            match cert.data {
-                RSCertData::Rsa { n, e } => {
-                    let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
-                    let pkk = pk.public_key_to_pem_pkcs1().unwrap();
-                    println!(
-                        "Root Certificate (RSA) {}:\n {}",
-                        i,
-                        String::from_utf8(pkk).unwrap()
-                    );
-                }
-                RSCertData::Ecdsa { curve_id: _, d: _ } => {
-                    println!(
-                        "Root Certificate (ECDSA) {}:\n Name: {:?}!",
-                        i, cert.name_hash
-                    );
-                }
+    for (i, cert) in rcs.certs.into_iter().enumerate() {
+        match cert.data {
+            RcsCert::RsaPrivKey { n, e } => {
+                let pk = openssl::rsa::Rsa::from_public_components(n, e).unwrap();
+                let pkk = pk.public_key_to_pem_pkcs1().unwrap();
+                println!(
+                    "Root Certificate (RSA) {}:\n {}",
+                    i,
+                    String::from_utf8(pkk).unwrap()
+                );
+            }
+            RcsCert::Ecdsa { curve_id: _, d: _ } => {
+                println!(
+                    "Root Certificate (ECDSA) {}:\n Name: {:?}!",
+                    i, cert.name_hash
+                );
             }
         }
     }

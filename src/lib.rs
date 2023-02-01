@@ -12,21 +12,21 @@ pub struct RootCertStore {
     pub count: u32,
 
     #[br(count = count)]
-    pub certs: Vec<RSCert>,
+    pub certs: Vec<RcsHeader>,
 }
 
 #[derive(BinRead)]
 #[allow(dead_code)]
-pub struct RSCert {
+pub struct RcsHeader {
     pub name_hash: [u8; 20],
-    pub start: RSTime,
-    pub end: RSTime,
-    pub data: RSCertData,
+    pub start: RcsTime,
+    pub end: RcsTime,
+    pub data: RcsCert,
 }
 
 #[derive(BinRead)]
 #[allow(dead_code)]
-pub struct RSTime {
+pub struct RcsTime {
     year: u16,
     month: u8,
     day: u8,
@@ -38,9 +38,9 @@ pub struct RSTime {
 
 #[binrw::binread]
 #[allow(dead_code)]
-pub enum RSCertData {
+pub enum RcsCert {
     #[br(little, magic = 1u32)]
-    Rsa {
+    RsaPrivKey {
         #[br(temp)]
         n_sz: u16,
         #[br(temp)]
