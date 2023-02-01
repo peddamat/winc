@@ -40,7 +40,7 @@ pub struct RcsTime {
 #[allow(dead_code)]
 pub enum RcsCert {
     #[br(little, magic = 1u32)]
-    RsaPrivKey {
+    RsaPublicKey {
         #[br(temp)]
         n_sz: u16,
         #[br(temp)]
@@ -52,7 +52,7 @@ pub enum RcsCert {
         e: BigNum,
     },
     #[br(little, magic = 2u32)]
-    Ecdsa {
+    EcdsaPublicKey {
         curve_id: u16,
 
         #[br(temp)]
