@@ -1,144 +1,13 @@
-use binrw::NullString;
 use binrw::{io::Cursor, io::Read, BinRead, BinReaderExt};
-use openssl::bn::BigNum;
 use openssl::rsa::Rsa;
+use openssl::x509::X509;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::io::SeekFrom;
 
-///////////////////////////////////////////////////////////////////////////////
-// Root Cert Store
-///////////////////////////////////////////////////////////////////////////////
-#[derive(BinRead)]
-#[br(magic = b"\x11\xF1\x12\xF2\x13\xF3\x14\xF4\x15\xF5\x16\xF6\x17\xF7\x18\xF8")]
-struct RootCertStore {
-    count: u32,
+use winc::*;
 
-    #[br(count = count)]
-    certs: Vec<RSCert>,
-}
-
-#[derive(BinRead)]
-#[allow(dead_code)]
-struct RSCert {
-    name_hash: [u8; 20],
-    start: RSTime,
-    end: RSTime,
-    data: RSCertData,
-}
-
-#[binrw::binread]
-#[allow(dead_code)]
-enum RSCertData {
-    #[br(little, magic = 1u32)]
-    Rsa {
-        #[br(temp)]
-        n_sz: u16,
-        #[br(temp)]
-        e_sz: u16,
-
-        #[br(align_after = 4, count = n_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-        n: BigNum,
-        #[br(align_after = 4, count = e_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-        e: BigNum,
-    },
-    #[br(little, magic = 2u32)]
-    Ecdsa {
-        curve_id: u16,
-
-        #[br(temp)]
-        key_sz: u16,
-
-        #[br(count = key_sz)]
-        d: Vec<u8>,
-    },
-}
-
-#[derive(BinRead)]
-#[allow(dead_code)]
-struct RSTime {
-    year: u16,
-    month: u8,
-    day: u8,
-    hour: u8,
-    minute: u8,
-    #[br(pad_after = 1)]
-    second: u8,
-}
-
-///////////////////////////////////////////////////////////////////////////////
-// TLS Cert Store
-///////////////////////////////////////////////////////////////////////////////
-#[binrw::binread]
-#[br(magic = b"\xab\xfe\x18\x5b\x70\xc3\x46\x92")]
-struct TlsStore {
-    #[br(offset = 0x5008)]
-    count: u32,
-
-    #[br(temp)]
-    next_write_addr: u32,
-
-    #[br(count = count)]
-    certs: Vec<TSCertEntry>,
-
-    #[br(temp)]
-    crc: u32,
-}
-
-#[binrw::binread]
-struct TSCertEntry {
-    #[br(pad_size_to(48))]
-    file_name: NullString,
-
-    #[br(temp)]
-    file_size: u32,
-    #[br(temp)]
-    file_addr: u32,
-
-    #[br(restore_position, seek_before(SeekFrom::Start(file_addr as u64)), count = file_size)]
-    data: Vec<u8>,
-}
-
-#[binrw::binread]
-#[allow(dead_code)]
-struct RSAPrivKey {
-    #[br(temp)]
-    n_sz: u16,
-    #[br(temp)]
-    e_sz: u16,
-    #[br(temp)]
-    d_sz: u16,
-    #[br(temp)]
-    p_sz: u16,
-    #[br(temp)]
-    q_sz: u16,
-    #[br(temp)]
-    dp_sz: u16,
-    #[br(temp)]
-    dq_sz: u16,
-    #[br(temp)]
-    qinv_sz: u16,
-
-    version: u32,
-
-    #[br(count = n_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    n: BigNum,
-    #[br(count = e_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    e: BigNum,
-    #[br(count = d_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    d: BigNum,
-    #[br(count = p_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    p: BigNum,
-    #[br(count = q_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    q: BigNum,
-    #[br(count = dp_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    dp: BigNum,
-    #[br(count = dq_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    dq: BigNum,
-    #[br(count = qinv_sz, map = |s: Vec<u8>| BigNum::from_slice(&s).unwrap())]
-    qinv: BigNum,
-}
 
 fn main() -> io::Result<()> {
     let file_path = "firmware/atwinc1500-original.bin";
@@ -195,14 +64,23 @@ fn main() -> io::Result<()> {
         println!("Found {} items in TLS Store!", ts.count);
 
         for (i, cert) in ts.certs.into_iter().enumerate() {
+
+            match &cert.file_name.to_string()[..4] {
+                "CERT" => println!("hi"),
+                _ => println!("Other!")
+
+            };
+
             if cert.file_name.to_string().starts_with("CERT") {
-                let x509 = openssl::x509::X509::from_der(&cert.data).expect("error opening x509");
-                let x509_text = x509.to_text().unwrap();
+                let x509 = X509::from_der(&cert.data)
+                    .expect("error opening x509")
+                    .to_text()?;
+                // let x509_text = x509.to_text().unwrap();
                 println!(
                     "TLS Certificate {}: {}\n {}",
                     i,
                     cert.file_name,
-                    String::from_utf8(x509_text).unwrap()
+                    String::from_utf8(x509).unwrap()
                 );
             } else if cert.file_name.to_string().starts_with("PRIV") {
                 let priv_key_as_pem = {
